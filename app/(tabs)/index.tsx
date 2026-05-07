@@ -27,6 +27,7 @@ import PortfolioValue from '@/components/PortfolioValue';
 import BotControlBar from '@/components/BotControlBar';
 import EquityChart from '@/components/EquityChart';
 import DailyBreakdown from '@/components/DailyBreakdown';
+import { SellButton } from './positions';
 import { useTradeHistory } from '@/contexts/TradeHistoryContext';
 import { computeFifoTrades, EnrichedTrade } from '@/lib/pnl';
 
@@ -492,33 +493,48 @@ export default function DashboardScreen() {
                 </View>
               ) : (
                 positions.map((pos) => {
-                  const pnl = pos.pnl_pct ?? 0;
-                  const isPos = pnl >= 0;
+                  const qty = Number(pos.qty) || 0;
+                  const entry = Number(pos.entry_price) || 0;
+                  const current = Number(pos.current_price) || 0;
+                  const plDollars = (current - entry) * qty;
+                  const plPct =
+                    entry > 0 ? ((current - entry) / entry) * 100 : Number(pos.pnl_pct) || 0;
+                  const isPos = plDollars >= 0;
+                  const pnlColor = isPos ? ACCENT_GREEN : ACCENT_RED;
                   return (
-                    <TouchableOpacity
-                      key={String(pos.id ?? pos.symbol)}
-                      style={styles.historyRow}
-                      onPress={() => router.push(`/ticker/${pos.symbol}`)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.historyRowLeft}>
-                        <View style={styles.symbolRow}>
-                          <Text style={styles.symbolText}>{pos.symbol}</Text>
-                          <View style={styles.openBadge}>
-                            <Text style={styles.openBadgeText}>OPEN</Text>
+                    <View key={String(pos.id ?? pos.symbol)} style={styles.posCard}>
+                      <TouchableOpacity
+                        style={styles.posCardHeader}
+                        onPress={() => router.push(`/ticker/${pos.symbol}`)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={styles.posCardHeaderLeft}>
+                          <View style={styles.symbolRow}>
+                            <Text style={styles.symbolText}>{pos.symbol}</Text>
+                            <View style={styles.openBadge}>
+                              <Text style={styles.openBadgeText}>OPEN</Text>
+                            </View>
                           </View>
+                          <Text style={styles.posCardMeta}>
+                            {qty} @ ${entry.toFixed(2)} → ${current.toFixed(2)}
+                          </Text>
                         </View>
-                        <Text style={styles.historyRowSub}>
-                          {pos.qty} shares · Entry ${Number(pos.entry_price).toFixed(2)} · Now ${Number(pos.current_price).toFixed(2)}
-                        </Text>
-                      </View>
-                      <View style={styles.historyRowRight}>
-                        <Text style={[styles.pnlText, { color: isPos ? ACCENT_GREEN : ACCENT_RED }]}>
-                          {isPos ? '+' : ''}{pnl.toFixed(2)}%
-                        </Text>
-                        <ChevronRight size={14} color={TEXT_DIM} />
-                      </View>
-                    </TouchableOpacity>
+                        <View style={styles.posCardHeaderRight}>
+                          <Text style={[styles.posPnlDollar, { color: pnlColor }]}>
+                            {isPos ? '+' : '-'}${Math.abs(plDollars).toFixed(2)}
+                          </Text>
+                          <Text style={[styles.posPnlPct, { color: pnlColor }]}>
+                            {plPct >= 0 ? '+' : ''}{plPct.toFixed(2)}%
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                      <SellButton
+                        symbol={pos.symbol}
+                        currentPrice={current}
+                        plPct={plPct}
+                        plDollars={plDollars}
+                      />
+                    </View>
                   );
                 })
               )}
@@ -898,6 +914,48 @@ const styles = StyleSheet.create({
   },
   pnlText: {
     fontSize: 14,
+    fontWeight: '700' as const,
+    letterSpacing: 0.2,
+  },
+
+  // Dashboard POS tab — full position card with SELL button
+  posCard: {
+    marginHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  posCardHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: 10,
+  },
+  posCardHeaderLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  posCardHeaderRight: {
+    alignItems: 'flex-end' as const,
+    gap: 1,
+  },
+  posCardMeta: {
+    color: TEXT_DIM,
+    fontSize: 11,
+    letterSpacing: 0.1,
+  },
+  posPnlDollar: {
+    fontSize: 14,
+    fontWeight: '800' as const,
+    letterSpacing: 0.2,
+  },
+  posPnlPct: {
+    fontSize: 11,
     fontWeight: '700' as const,
     letterSpacing: 0.2,
   },

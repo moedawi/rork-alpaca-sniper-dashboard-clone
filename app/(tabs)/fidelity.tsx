@@ -402,7 +402,8 @@ async function closePosition(symbol: string): Promise<void> {
   const command = `SELL_${symbol.toUpperCase()}`;
   const { error } = await supabase
     .from('bot_control')
-    .insert({ value: command });
+    .update({ command })
+    .eq('id', 1);
   if (error) throw new Error(error.message);
 }
 
@@ -966,7 +967,7 @@ const sectionStyles = StyleSheet.create({
 interface SellModalProps {
   trade: ManualTrade;
   currentPrice: number | undefined;
-  onConfirm: (tradeId: number, sellPrice: number) => void;
+  onConfirm: (tradeId: number, sellPrice: number, sellQty: number) => void;
   onClose: () => void;
   isLoading: boolean;
 }
@@ -975,12 +976,16 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
   const insets = useSafeAreaInsets();
   const suggestedPrice = trade.current_price ?? currentPrice ?? trade.sell_price ?? trade.buy_price;
   const [sellPrice, setSellPrice] = useState(suggestedPrice.toFixed(2));
+  const [sellQtyStr, setSellQtyStr] = useState(trade.qty.toString());
+  const [sellAll, setSellAll] = useState(true);
 
   const spNum = parseFloat(sellPrice) || 0;
-  const pnl = (spNum - trade.buy_price) * trade.qty;
+  const sqNum = sellAll ? trade.qty : (parseInt(sellQtyStr, 10) || 0);
+  const pnl = (spNum - trade.buy_price) * sqNum;
   const pnlPct = ((spNum - trade.buy_price) / trade.buy_price) * 100;
   const isProfit = pnl >= 0;
   const pnlColor = isProfit ? ACCENT_GREEN : ACCENT_RED;
+  const isPartial = sqNum > 0 && sqNum < trade.qty;
 
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
@@ -995,7 +1000,7 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
           <View style={sellStyles.header}>
             <View>
               <Text style={sellStyles.title}>Log Sell</Text>
-              <Text style={sellStyles.subtitle}>{trade.symbol} · {trade.qty} shares</Text>
+              <Text style={sellStyles.subtitle}>{trade.symbol} · {trade.qty} shares held</Text>
             </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <X size={20} color={TEXT_DIM} strokeWidth={2} />
@@ -1009,8 +1014,8 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
             </View>
             <View style={sellStyles.summaryDivider} />
             <View style={sellStyles.summaryItem}>
-              <Text style={sellStyles.summaryLabel}>SHARES</Text>
-              <Text style={sellStyles.summaryValue}>{trade.qty}</Text>
+              <Text style={sellStyles.summaryLabel}>SELLING</Text>
+              <Text style={sellStyles.summaryValue}>{sqNum} sh</Text>
             </View>
             <View style={sellStyles.summaryDivider} />
             <View style={sellStyles.summaryItem}>
@@ -1024,6 +1029,42 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
             </View>
           </View>
 
+          {/* Shares row */}
+          <View style={sellStyles.inputGroup}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={sellStyles.inputLabel}>SHARES SOLD</Text>
+              <TouchableOpacity
+                onPress={() => { setSellAll(!sellAll); if (!sellAll) setSellQtyStr(trade.qty.toString()); }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                <View style={{
+                  width: 18, height: 18, borderRadius: 4,
+                  backgroundColor: sellAll ? AMBER : 'transparent',
+                  borderWidth: 1.5, borderColor: AMBER,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {sellAll && <Check size={11} color="#000" strokeWidth={3} />}
+                </View>
+                <Text style={{ color: AMBER, fontSize: 12, fontWeight: '600' }}>SELL ALL ({trade.qty})</Text>
+              </TouchableOpacity>
+            </View>
+            {!sellAll && (
+              <View style={sellStyles.inputWrap}>
+                <Hash size={16} color={AMBER} strokeWidth={2} />
+                <TextInput
+                  style={sellStyles.input}
+                  value={sellQtyStr}
+                  onChangeText={setSellQtyStr}
+                  keyboardType="number-pad"
+                  placeholder={trade.qty.toString()}
+                  placeholderTextColor={TEXT_DIM}
+                  selectTextOnFocus
+                />
+              </View>
+            )}
+          </View>
+
+          {/* Price row */}
           <View style={sellStyles.inputGroup}>
             <Text style={sellStyles.inputLabel}>SELL PRICE</Text>
             <View style={sellStyles.inputWrap}>
@@ -1040,10 +1081,16 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
             </View>
           </View>
 
+          {isPartial && (
+            <Text style={{ color: TEXT_DIM, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>
+              Partial sell — {trade.qty - sqNum} shares remain open
+            </Text>
+          )}
+
           <TouchableOpacity
             style={[sellStyles.confirmBtn, isLoading && { opacity: 0.6 }]}
-            onPress={() => onConfirm(trade.id, spNum)}
-            disabled={isLoading || spNum <= 0}
+            onPress={() => onConfirm(trade.id, spNum, sqNum)}
+            disabled={isLoading || spNum <= 0 || sqNum <= 0 || sqNum > trade.qty}
             activeOpacity={0.8}
           >
             {isLoading ? (
@@ -1051,7 +1098,9 @@ function SellConfirmModal({ trade, currentPrice, onConfirm, onClose, isLoading }
             ) : (
               <>
                 <Check size={16} color={TEXT_PRIMARY} strokeWidth={2.5} />
-                <Text style={sellStyles.confirmBtnText}>CONFIRM SELL @ ${spNum.toFixed(2)}</Text>
+                <Text style={sellStyles.confirmBtnText}>
+                  CONFIRM SELL {sqNum} sh @ ${spNum.toFixed(2)}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -2826,23 +2875,49 @@ export default function FidelityScreen() {
   });
 
   const confirmSellMutation = useMutation({
-    mutationFn: async ({ id, sell_price, pnl, pnl_pct }: {
+    mutationFn: async ({ id, sell_price, pnl, pnl_pct, sell_qty, total_qty }: {
       id: number;
       sell_price: number;
       pnl: number;
       pnl_pct: number;
+      sell_qty: number;
+      total_qty: number;
     }) => {
-      const { error } = await supabase
-        .from('manual_trades')
-        .update({
-          status: 'closed',
-          sell_price,
-          pnl,
-          pnl_pct,
-          closed_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (error) throw new Error(error.message);
+      const isPartial = sell_qty < total_qty;
+      if (isPartial) {
+        // Partial sell: reduce qty on existing trade, insert closed record for sold portion
+        const { error: updateErr } = await supabase
+          .from('manual_trades')
+          .update({ qty: total_qty - sell_qty })
+          .eq('id', id);
+        if (updateErr) throw new Error(updateErr.message);
+        const { error: insertErr } = await supabase
+          .from('manual_trades')
+          .insert({
+            symbol: trades.find((t) => t.id === id)?.symbol ?? '',
+            qty: sell_qty,
+            buy_price: trades.find((t) => t.id === id)?.buy_price ?? 0,
+            sell_price,
+            status: 'closed',
+            pnl,
+            pnl_pct,
+            closed_at: new Date().toISOString(),
+          });
+        if (insertErr) throw new Error(insertErr.message);
+      } else {
+        // Full sell: close the trade
+        const { error } = await supabase
+          .from('manual_trades')
+          .update({
+            status: 'closed',
+            sell_price,
+            pnl,
+            pnl_pct,
+            closed_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (error) throw new Error(error.message);
+      }
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['manual-trades'] });
@@ -2956,12 +3031,12 @@ export default function FidelityScreen() {
   const totalOpenCount = signalTrades.length + openTrades.length;
 
   // ── Sell confirm handler ──
-  const handleConfirmSell = useCallback((tradeId: number, sellPrice: number) => {
+  const handleConfirmSell = useCallback((tradeId: number, sellPrice: number, sellQty: number) => {
     const trade = trades.find((t) => t.id === tradeId);
     if (!trade) return;
-    const pnl = (sellPrice - trade.buy_price) * trade.qty;
+    const pnl = (sellPrice - trade.buy_price) * sellQty;
     const pnl_pct = ((sellPrice - trade.buy_price) / trade.buy_price) * 100;
-    confirmSellMutation.mutate({ id: tradeId, sell_price: sellPrice, pnl, pnl_pct });
+    confirmSellMutation.mutate({ id: tradeId, sell_price: sellPrice, pnl, pnl_pct, sell_qty: sellQty, total_qty: trade.qty });
   }, [trades, confirmSellMutation]);
 
   // ── Edit handler ──
@@ -3108,12 +3183,12 @@ export default function FidelityScreen() {
                       onSetLimit={(t) => setLimitTrade(t)}
                       onClosePosition={(symbol) => {
                         Alert.alert(
-                          `Sell ${symbol}?`,
-                          `This will send a SELL_${symbol} command to the bot.`,
+                          `Close ${symbol}?`,
+                          `Force-close this position immediately.`,
                           [
                             { text: 'Cancel', style: 'cancel' },
                             {
-                              text: 'SELL',
+                              text: 'CLOSE',
                               style: 'destructive',
                               onPress: () => {
                                 closePosition(symbol).catch((err: Error) =>

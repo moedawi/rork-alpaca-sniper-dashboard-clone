@@ -96,8 +96,8 @@ export default function BotControlBar() {
   const handleReset = () => {
     tapHaptic();
     Alert.alert(
-      'Reset virtual capital?',
-      'This will reset your virtual capital back to $1,000. Are you sure?',
+      'Full reset?',
+      'This will:\n  • Close every open position\n  • Reset virtual capital to $1,000\n  • Wipe the equity chart\n\nWins/Losses history is preserved. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
         {

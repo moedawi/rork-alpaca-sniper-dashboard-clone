@@ -168,10 +168,23 @@ export default function EquityChart({ compact = false }: EquityChartProps) {
   const rawFirst = rawRows[0]?.equity ?? 0;
   const rawLast = rawRows[rawRows.length - 1]?.equity ?? rawFirst;
 
-  // Project raw rows onto chart pixel space (only if 2+ points).
+  // Project raw rows onto chart pixel space.
+  // - 0 rows: empty (loading / no data state)
+  // - 1 row: synthesize a flat horizontal line spanning the full chart width
+  //   at vertical center, so the user sees a clean baseline rather than empty text.
+  // - 2+ rows: normal projection.
   const points: ChartPoint[] = useMemo(() => {
     const rows = seriesQuery.data ?? [];
-    if (rows.length < 2) return [];
+    if (rows.length === 0) return [];
+    const midY = PAD.top + INNER_H / 2;
+    if (rows.length === 1) {
+      const r = rows[0];
+      const t0 = new Date(r.timestamp).getTime();
+      return [
+        { t: t0, v: r.equity, x: PAD.left, y: midY },
+        { t: Date.now(), v: r.equity, x: PAD.left + INNER_W, y: midY },
+      ];
+    }
     const ts = rows.map((r) => new Date(r.timestamp).getTime());
     const vs = rows.map((r) => r.equity);
     const tMin = Math.min(...ts);

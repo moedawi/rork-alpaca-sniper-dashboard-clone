@@ -192,7 +192,7 @@ interface SellButtonProps {
   plDollars: number;
 }
 
-function SellButton({ symbol, currentPrice, plPct, plDollars }: SellButtonProps) {
+export function SellButton({ symbol, currentPrice, plPct, plDollars }: SellButtonProps) {
   const sendCmd = useBotCommand();
   const isPending = sendCmd.isPending;
 

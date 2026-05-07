@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.0g0nzz8xs03jcpnq5ujs6"
+      "package": "com.moedawi.trading"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -47,6 +47,12 @@
       "eas": {
         "projectId": "68429dec-7f02-4a29-a2ec-431c929c1d6f"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/68429dec-7f02-4a29-a2ec-431c929c1d6f"
     }
   }
 }
